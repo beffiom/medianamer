@@ -36,7 +36,7 @@ module MediaNamer
         '-y'
       ]
       
-      success = system(*command)
+      success = system(*command, out: File::NULL, err: File::NULL)
       
       unless success
         puts "      ⚠ ffmpeg failed"
