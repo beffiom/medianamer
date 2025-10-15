@@ -5,22 +5,40 @@ module MediaNamer
   class FileScanner
     VIDEO_EXTENSIONS = %w[.mkv .mp4 .avi .mov .m4v].freeze
 
-  def scan(base_directory)
-    series = {}
-    
-    Dir.glob(File.join(base_directory, '*')).each do |series_dir|
-      next unless File.directory?(series_dir)
+    def scan(base_directory)
+      # Check if this is a single show directory (contains Season folders)
+      if single_show?(base_directory)
+        show_name = File.basename(base_directory)
+        files = find_videos_in(base_directory)
+        return { show_name => files } if files.any?
+      end
       
-      series_name = File.basename(series_dir)
-      files = find_videos_in(series_dir)
-      
-      series[series_name] = files if files.any?
+      # Otherwise scan for multiple shows
+      scan_multiple_shows(base_directory)
     end
-    
-    series
-  end
 
     private
+
+    def single_show?(directory)
+      Dir.glob(File.join(directory, '*')).any? do |item|
+        File.directory?(item) && File.basename(item).match?(/Season\s+\d+/i)
+      end
+    end
+
+    def scan_multiple_shows(base_directory)
+      series = {}
+      
+      Dir.glob(File.join(base_directory, '*')).each do |series_dir|
+        next unless File.directory?(series_dir)
+        
+        series_name = File.basename(series_dir)
+        files = find_videos_in(series_dir)
+        
+        series[series_name] = files if files.any?
+      end
+      
+      series
+    end
 
     def find_videos_in(directory)
       Dir.glob(File.join(directory, '**', '*'))

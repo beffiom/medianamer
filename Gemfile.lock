@@ -2,10 +2,12 @@ PATH
   remote: .
   specs:
     medianamer (0.1.0)
+      dotenv (~> 2.8)
 
 GEM
   remote: https://rubygems.org/
   specs:
+    dotenv (2.8.1)
 
 PLATFORMS
   ruby

@@ -3,6 +3,9 @@ Ruby CLI Application to automate the process of updating filename and metadata f
 
 Updated port of wikinamer: https://github.com/beffiom/wikinamer
 
+# Dependencies
+ffmpeg
+
 # Installation
 
 # Usage
