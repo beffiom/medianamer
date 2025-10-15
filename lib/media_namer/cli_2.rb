@@ -8,11 +8,13 @@ module MediaNamer
     def run(args)
       options = parse_options(args)
       directory = args.first || Dir.pwd
-      
+
+
       logger = MediaNamer::AppLogger
+
       logger.info("MediaNamer v#{MediaNamer::VERSION}")
       logger.info("Scanning: #{directory}")
-      logger.info("Options: #{options}")
+      logger.info("Dry run: #{options[:dry_run]}\n\n")
       
       scanner = MediaNamer::FileScanner.new
       parser = MediaNamer::EpisodeParser.new
@@ -21,14 +23,17 @@ module MediaNamer
       metadata_updater = MediaNamer::MetadataUpdater.new
       
       series = scanner.scan(directory)
+      
+      #series.each do |show_name, files|
+      #  puts "#{show_name}:"
+      #  episodes = parser.parse(files)
+      #  
+      #  episodes.first(2).each do |ep|
+      #    puts "  S#{ep[:season].to_s.rjust(2, '0')}E#{ep[:episode].to_s.rjust(2, '0')} - #{ep[:original_name]}"
+      #  end
+      #  puts "  ... (#{episodes.count} total)\n\n"
+      #end
 
-      puts "\nSeries Discovered in Directory:"
-      series.each do |show_name, files|
-        puts "  #{show_name}"
-      end
-      
-      queue = []
-      
       series.each do |show_name, files|
         puts "\nProcessing: #{show_name}"
         
@@ -37,35 +42,63 @@ module MediaNamer
         
         if results.empty?
           logger.error("⚠ No results found for #{show_name}")
-          next
+          print "Try manual search? [y]es/[n]o: "
+          user_input = $stdin.gets.chomp
+          if user_input == 'y' || user_input == 'yes'
+            print "Type name of show: "
+            show_name = $stdin.gets.chomp
+            results = tmdb.search_show(show_name)
+          else
+            next
+          end
         end
-        
+
         puts "\n  Select the correct show:"
         results.first(5).each_with_index do |result, index|
           year = result['first_air_date']&.split('-')&.first || 'N/A'
           puts "    #{index + 1}. #{result['name']} (#{year})"
         end
-        puts "    0. Skip this show"
+        puts "    0. None of these"
         
-        print "\n  Enter selection: "
-        selection = STDIN.gets.chomp.to_i
+        print "\n  Enter selection (1-#{[results.length, 5].min}): "
+        selection = $stdin.gets.chomp.to_i
         
-        next if selection.zero?
+        if selection.zero? || selection > results.length
+          print "\n  Type name of show: "
+          show_name = $stdin.gets.chomp
+          results = tmdb.search_show(show_name)
+          print "\n  Select the correct show: "
+          results.first(5).each_with_index do |result, index|
+            year = result['first_air_date']&.split('-')&.first || 'N/A'
+            puts "    #{index + 1}. #{result['name']} (#{year})"
+          end
+          puts "    0. Skip this show"
+          
+          print "\n  Enter selection (1-#{[results.length, 5].min}): "
+          selection = gets.chomp.to_i
+          if selection.zero? || selection > results.length
+            puts "  Skipped\n\n"
+            next
+          end
+        end
         
-        show = results[selection - 1]
+        show = results[selection-1]
         show_id = show['id']
-        logger.info("Selected: #{show['name']}")
-        
+        puts "\n  Selected: #{show['name']} (#{show['first_air_date']&.split('-')&.first})"
+        episodes = parser.parse(files)
+        puts "    #{episodes.count} episodes across #{episodes.map { |e| e[:season] }.uniq.count} seasons\n\n"
+
         episodes = parser.parse(files)
         seasons = episodes.group_by { |ep| ep[:season] }
         
         seasons.each do |season_num, season_episodes|
           puts "\n  Season #{season_num}:"
           api_episodes = tmdb.get_episodes(show_id, season_num)
-          
+
           season_episodes.each do |ep|
             api_ep = api_episodes[ep[:episode] - 1]
             episode_title = api_ep ? api_ep['name'] : 'Unknown'
+            
             puts "    E#{ep[:episode].to_s.rjust(2, '0')}: #{episode_title}"
             puts "      File Before: #{ep[:original_name]}"
             puts "      File After: S#{ep[:season].to_s.rjust(2, '0')}E#{ep[:episode].to_s.rjust(2, '0')} #{episode_title}#{File.extname(ep[:path])}"
@@ -74,56 +107,28 @@ module MediaNamer
           if api_episodes.length != season_episodes.length
             logger.error("    ⚠ Warning: Found #{season_episodes.length} files but API reports #{api_episodes.length} episodes")
           end
-          
-          print "\n  Queue above changes? [y]es/[n]o: "
-          queue_changes = STDIN.gets.chomp.downcase
-          
-          if queue_changes == 'y' || queue_changes == 'yes'
+
+
+          print "\n  Update all files? [y]es/[n]o: "
+          update_files = $stdin.gets.chomp
+          if update_files == 'y' || update_files == 'yes'
             season_episodes.each do |ep|
               api_ep = api_episodes[ep[:episode] - 1]
-              next unless api_ep
+              episode_title = api_ep ? api_ep['name'] : 'Unknown'
               
-              queue << {
-                episode: ep,
-                title: api_ep['name'],
-                show_name: show['name']
-              }
+              puts "    E#{ep[:episode].to_s.rjust(2, '0')}: #{episode_title}"
+              
+              new_path = renamer.rename(ep, episode_title, dry_run: options[:dry_run])
+              if File.exist?(new_path)
+                metadata_updater.update(new_path, episode_title, dry_run: false)
+              end
             end
           else
-            puts "  Skipped Season #{season_num}"
+            puts "  Skipped..."
+            next
           end
         end
       end
-      
-      if queue.empty?
-        puts "\nNo changes queued."
-        return
-      end
-      
-      puts "\n" + "="*50
-      puts "QUEUED CHANGES (#{queue.count} files)"
-      puts "="*50
-      
-      print "\nApply all changes? [y]es/[n]o: "
-      apply_changes = STDIN.gets.chomp.downcase
-          
-      unless apply_changes == 'y' || apply_changes == 'yes'
-        puts "\nNo changes not applied..."
-        puts "\nExiting program."
-        return
-      end
-      
-      queue.each do |item|
-        ep = item[:episode]
-        title = item[:title]
-        show_name = item[:show_name]
-        puts "#{show_name} S#{ep[:season].to_s.rjust(2, '0')}E#{ep[:episode].to_s.rjust(2, '0')}: #{title}\n"
-
-        new_path = renamer.rename(ep, title, dry_run: false)
-        metadata_updater.update(new_path, title, dry_run: false)
-      end
-      
-      puts "\nComplete! Updated #{queue.count} files"
     end
 
     private
