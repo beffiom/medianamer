@@ -8,10 +8,25 @@ module MediaNamer
     def run(args)
       options = parse_options(args)
       directory = args.first || Dir.pwd
-
-      puts "Medianamer v#{VERSION}"
+      
+      puts "MediaNamer v#{MediaNamer::VERSION}"
       puts "Scanning: #{directory}"
-      puts "Dry run: #{options[:dry_run]}"
+      puts "Dry run: #{options[:dry_run]}\n\n"
+
+      scanner = MediaNamer::FileScanner.new
+      parser = MediaNamer::EpisodeParser.new
+      
+      series = scanner.scan(directory)
+      
+      series.each do |show_name, files|
+        puts "#{show_name}:"
+        episodes = parser.parse(files)
+        
+        episodes.first(2).each do |ep|
+          puts "  S#{ep[:season].to_s.rjust(2, '0')}E#{ep[:episode].to_s.rjust(2, '0')} - #{ep[:original_name]}"
+        end
+        puts "  ... (#{episodes.count} total)\n\n"
+      end
     end
 
     private

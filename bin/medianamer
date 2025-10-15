@@ -1,5 +1,5 @@
 #!/usr/bin/env ruby
 
-require_relative '../lib/medianamer'
+require_relative '../lib/media_namer'
 
 MediaNamer::CLI.new.run(ARGV)
