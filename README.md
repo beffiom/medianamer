@@ -15,10 +15,14 @@ Updated port of wikinamer: https://github.com/beffiom/wikinamer
 
 ## Examples
 ### Before
+![Cowboy Bebop Before](./sample/sample_before.png)
 
 ### Run
+![Cowboy Bebop During 1](./sample/sample_during_2.png)
+![Cowboy Bebop During 2](./sample/sample_during_1.png)
 
 ### After
+![Cowboy Bebop After](./sample/sample_after.png)
 
 ## Installation
 ### Dependencies
