@@ -54,7 +54,7 @@ module MediaNamer
 
         show = results[selection - 1]
         show_id = show['id']
-        logger.info("Selected: #{show['name']}")
+        puts "Selected: #{show['name']}"
 
         episodes = parser.parse(files)
         seasons = episodes.group_by { |ep| ep[:season] }
